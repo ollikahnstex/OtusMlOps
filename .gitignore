@@ -1,0 +1,14 @@
+*.csv
+*.docx
+*.png
+*.txt
+*.xlsx
+
+**/.git/
+**/.idea/
+**/__pycache__/
+**/data/
+**/venv*/
+
+test.py
+temp.py
