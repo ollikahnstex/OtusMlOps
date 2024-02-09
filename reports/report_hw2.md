@@ -2,7 +2,8 @@
 
 ## Хранение данных
 
-Данные по транзакциям перенесены в объектное хранилище: **s3://otus-mlops-bucket/fraud_data/**  
+Данные по транзакциям перенесены в объектное хранилище: **s3://otus-mlops-bucket/fraud_data/** 
+(bucket: https://storage.yandexcloud.net/otus-mlops-bucket)
 ![Данные в s3-хранилище](hw2_img/s3_data.PNG "Данные в s3-хранилище")  
 Перенос выполнен командой `s3cmd sync s3://mlops-data/fraud-data/ s3://otus-mlops-bucket/fraud_data/ --acl-public`.
 Без последнего ключа возникала ошибка Access Denied.
