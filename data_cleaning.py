@@ -1,6 +1,7 @@
 import argparse
 import functools
 import os
+import subprocess
 from timeit import default_timer as timer
 
 import findspark
@@ -22,7 +23,7 @@ BUCKET_RAW_DATA_ACCESS_KEY = os.environ['BUCKET_RAW_DATA_ACCESS_KEY']
 S3_REGION = 'ru-central1'
 S3_URL = 'https://storage.yandexcloud.net'
 S3_FRAUD_DATA_DIR = 'fraud_data/'
-S3_FRAUD_DATA_PATH = 's3a://' + BUCKET_NAME + S3_FRAUD_DATA_DIR
+S3_FRAUD_DATA_PATH = BUCKET_NAME + S3_FRAUD_DATA_DIR
 
 # Список столбцов и их типов для pyspark.
 DATA_COLS = {
@@ -90,14 +91,28 @@ def _drop_nonpositive_amount(data_):
     return data_.filter(data_['tx_amount'] > 0)
 
 
-def prepare_initial_data_filepath(filepath_: str) -> str:
+def prepare_initial_data_filepath(filepath_: str, spark_cluster_url_: str = None) -> str:
+    if spark_cluster_url_ is None:
+        spark_cluster_url_ = SPARK_CLUSTER_URL
+
     print(f'Путь до файла с исходными данными: {filepath_}.')
     if not filepath_.startswith(HDFS_FRAUD_DATA_DIR):
         filepath_ = HDFS_FRAUD_DATA_DIR + filepath_.lstrip('/')
-    if not filepath_.startswith(SPARK_CLUSTER_URL):
-        filepath_ = SPARK_CLUSTER_URL + filepath_.lstrip('/')
+    if not filepath_.startswith(spark_cluster_url_):
+        filepath_ = spark_cluster_url_ + filepath_.lstrip('/')
     print(f'Полный путь до файла исходными с данными: {filepath_}.')
     return filepath_
+
+
+def check_cleaned_file_existence(filepath_: str) -> bool:
+    path_to_check = 's3://' + filepath_ + '/'
+    check_command = f's3cmd ls {path_to_check} ' + r"| grep _SUCCESS$ | awk '{print $4}'"
+    res = subprocess.run(check_command, shell=True, capture_output=True)
+    is_file_exists = False
+    if res.stdout:
+        print(f'Файл {path_to_check} уже успешно очищен и сохранён!')
+        is_file_exists = True
+    return is_file_exists
 
 
 def create_spark_session():
@@ -139,9 +154,10 @@ def get_s3_client(url_, key_id_, access_key_, region_):
 
 
 def prepare_path_to_save_data(filepath_: str, s3_path_: str) -> str:
-    print(f'Подготовка файла ')
+    print(f'Подготовка пути для сохранения файла')
     filepath_ = filepath_.rsplit('/', 1)[1].replace('.txt', '.parquet')
-    filepath_ = s3_path_ + filepath_
+    filepath_ = 's3a://' + s3_path_ + filepath_
+    print(f'Путь для сохранения файла: {filepath_}')
     return filepath_
 
 
@@ -149,8 +165,10 @@ def save_data(data_, filepath_) -> None:
     print(f'Сохранение данных в файл "{filepath_}"...')
     if not filepath_.endswith('.parquet'):
         filepath_ = filepath_ + f'.parquet'
+    if not filepath_.startswith('s3a://'):
+        filepath_ = 's3a://' + filepath_
     print(f'Полный путь: "{filepath_}"...')
-    data_.coalesce(1).write.parquet(filepath_, mode='ignore')
+    data_.coalesce(1).write.parquet(filepath_, mode='overwrite')
     print('Файл успешно сохранен!')
 
 
@@ -162,11 +180,19 @@ if __name__ == '__main__':
         epilog='Argument is a path to file with transaction data'
     )
     parser.add_argument('data_filepath')
+    parser.add_argument('spark_cluster_url')
     arguments = parser.parse_args()
     data_filepath = arguments.data_filepath
+    spark_cluster_url = arguments.spark_cluster_url
+
+    # Подготовка путей к файлам.
+    data_filepath = prepare_initial_data_filepath(data_filepath, spark_cluster_url)
+    path_to_save = prepare_path_to_save_data(data_filepath, S3_FRAUD_DATA_PATH)
+    is_cleaned_file_exists = check_cleaned_file_existence(path_to_save)
+    if is_cleaned_file_exists:
+        exit(0)
 
     # Загрузка данных.
-    data_filepath = prepare_initial_data_filepath(data_filepath)
     spark = create_spark_session()
     data = load_transaction_data(data_filepath, DATA_SCHEMA)
 
@@ -175,5 +201,4 @@ if __name__ == '__main__':
 
     # Сохранение данных.
     s3_client = get_s3_client(S3_URL, BUCKET_RAW_DATA_ACCESS_ID, BUCKET_RAW_DATA_ACCESS_KEY, S3_REGION)
-    path_to_save = prepare_path_to_save_data(data_filepath, S3_FRAUD_DATA_PATH)
     save_data(data, path_to_save)
