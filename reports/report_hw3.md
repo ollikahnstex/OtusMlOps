@@ -30,3 +30,15 @@
 
 Jupyter Notebook с тестовой обработкой данных:
 [data_cleaning.ipynb](data_cleaning.ipynb)
+
+После отладки кода на тестовом примере был написан python-скрипт обработки данных на PySpark:
+[data_cleaning.py](../data_cleaning.py)
+
+Данный скрипт принимает на вход путь до файла на HDFS Spark-кластера, чистит файл и сохраняет его в формате
+`parquet` на s3-хранилище в ранее созданном бакете **https://storage.yandexcloud.net/otus-mlops-dproc**.
+Для запуска этого скрипта на каждом файле с транзакциями из HDFS я выполнили bash-команду, которая
+составляет список путей до всех файлов `.txt` на HDFS и передаёт их имена в python-скрипт.
+```bash
+hdfs dfs -ls /user/ubuntu/fraud_data | grep .txt$ | awk '{print $8}' | while read fn; do python ../data_cleaning.py $fn; done
+```
+![Работа скрипта](hw3_img/process_all_data.PNG "Работа скрипта")  
