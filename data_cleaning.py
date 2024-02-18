@@ -50,62 +50,62 @@ DATA_SCHEMA = StructType(
 def count_decorator(filter_func):
     @functools.wraps(filter_func)
     def wrapper(*args, **kwargs):
-        data_ = args[0]
-        n_before_ = kwargs['n_before_']
-        stage_name_ = kwargs['stage_name_']
+        data = args[0]
+        n_before = kwargs['n_before']
+        stage_name = kwargs['stage_name_']
 
-        print(f'Начат этап очистки "{stage_name_}"...')
-        print(f'  Размер датасета до очистки: {n_before_}.')
-        start_time_ = timer()
-        data_ = filter_func(data_)
+        print(f'Начат этап очистки "{stage_name}"...')
+        print(f'  Размер датасета до очистки: {n_before}.')
+        start_time = timer()
+        data = filter_func(data)
         print(f'  Подсчёт размера датасета после очистки...')
-        n_after = data_.count()
+        n_after = data.count()
         print(f'  Размер датасета после очистки: {n_after}.')
-        n_diff = n_before_ - n_after
+        n_diff = n_before - n_after
         print(f'  Количество удалённых строк: {n_diff}.')
-        end_time_ = timer()
-        duration_ = end_time_ - start_time_
-        print(f'  Продолжительность этапа: {duration_:.2f} сек.')
-        print(f'Этап очистки "{stage_name_}" успешно завершён!')
+        end_time = timer()
+        duration = end_time - start_time
+        print(f'  Продолжительность этапа: {duration:.2f} сек.')
+        print(f'Этап очистки "{stage_name}" успешно завершён!')
 
-        return data_, n_after
+        return data, n_after
 
     return wrapper
 
 
 # Удаление полных дубликатов.
 @count_decorator
-def _drop_duplicates(data_):
-    return data_.dropDuplicates()
+def _drop_duplicates(data):
+    return data.dropDuplicates()
 
 
 # Удаление отрицательных индентификаторов клиентов.
 @count_decorator
-def _drop_negative_customers(data_):
-    return data_.filter(data_['customer_id'] >= 0)
+def _drop_negative_customers(data):
+    return data.filter(data['customer_id'] >= 0)
 
 
 # Удаление строк с нулевым объёмом перевода.
 @count_decorator
-def _drop_nonpositive_amount(data_):
-    return data_.filter(data_['tx_amount'] > 0)
+def _drop_nonpositive_amount(data):
+    return data.filter(data['tx_amount'] > 0)
 
 
-def prepare_initial_data_filepath(filepath_: str, spark_cluster_url_: str = None) -> str:
-    if spark_cluster_url_ is None:
-        spark_cluster_url_ = SPARK_CLUSTER_URL
+def prepare_initial_data_filepath(filepath: str, spark_cluster_url: str = None) -> str:
+    if spark_cluster_url is None:
+        spark_cluster_url = SPARK_CLUSTER_URL
 
-    print(f'Путь до файла с исходными данными: {filepath_}.')
-    if not filepath_.startswith(HDFS_FRAUD_DATA_DIR):
-        filepath_ = HDFS_FRAUD_DATA_DIR + filepath_.lstrip('/')
-    if not filepath_.startswith(spark_cluster_url_):
-        filepath_ = spark_cluster_url_ + filepath_.lstrip('/')
-    print(f'Полный путь до файла исходными с данными: {filepath_}.')
-    return filepath_
+    print(f'Путь до файла с исходными данными: {filepath}.')
+    if not filepath.startswith(HDFS_FRAUD_DATA_DIR):
+        filepath = HDFS_FRAUD_DATA_DIR + filepath.lstrip('/')
+    if not filepath.startswith(spark_cluster_url):
+        filepath = spark_cluster_url + filepath.lstrip('/')
+    print(f'Полный путь до файла исходными с данными: {filepath}.')
+    return filepath
 
 
-def check_cleaned_file_existence(filepath_: str) -> bool:
-    path_to_check = 's3://' + filepath_ + '/'
+def check_cleaned_file_existence(filepath: str) -> bool:
+    path_to_check = 's3://' + filepath + '/'
     check_command = f's3cmd ls {path_to_check} ' + r"| grep _SUCCESS$ | awk '{print $4}'"
     res = subprocess.run(check_command, shell=True, capture_output=True)
     is_file_exists = False
@@ -117,31 +117,31 @@ def check_cleaned_file_existence(filepath_: str) -> bool:
 
 def create_spark_session():
     print('Создание Spark-сессии...')
-    spark_ = SparkSession.builder.appName('data_cleaning') \
+    spark = SparkSession.builder.appName('data_cleaning') \
         .config(conf=SparkConf()) \
         .config('spark.sql.execution.arrow.pyspark.enabled', True) \
         .config('spark.driver.memory', '8G') \
         .getOrCreate()
     print('Spark-сессия успешно создана!')
-    return spark_
+    return spark
 
 
-def load_transaction_data(filepath_: str, data_schema_):
-    print(f'Загрузка данных из файла "{filepath_}"...')
-    data_ = spark.read.csv(filepath_, schema=data_schema_, header=False, sep=',', comment='#')
+def load_transaction_data(spark, filepath: str, data_schema):
+    print(f'Загрузка данных из файла "{filepath}"...')
+    data = spark.read.csv(filepath, schema=data_schema, header=False, sep=',', comment='#')
     print('Данные успешно загружены!')
-    return data_
+    return data
 
 
-def clean_data(data_):
-    n_before_ = data_.count()
-    data_, n_before_ = _drop_duplicates(data_, n_before_=n_before_,
-                                        stage_name_="Удаление полных дубликатов")
-    data_, n_before_ = _drop_negative_customers(data_, n_before_=n_before_,
-                                                stage_name_="Удаление отрицательных индентификаторов клиентов")
-    data_, n_before_ = _drop_nonpositive_amount(data_, n_before_=n_before_,
-                                                stage_name_="Удаление строк с нулевым объёмом перевода")
-    return data_
+def clean_data(data):
+    n_before = data.count()
+    data, n_before = _drop_duplicates(data, n_before=n_before,
+                                      stage_name_="Удаление полных дубликатов")
+    data, n_before = _drop_negative_customers(data, n_before=n_before,
+                                              stage_name_="Удаление отрицательных индентификаторов клиентов")
+    data, n_before = _drop_nonpositive_amount(data, n_before=n_before,
+                                              stage_name_="Удаление строк с нулевым объёмом перевода")
+    return data
 
 
 def get_s3_client(url_, key_id_, access_key_, region_):
@@ -153,23 +153,42 @@ def get_s3_client(url_, key_id_, access_key_, region_):
     return session.client('s3', endpoint_url=url_)
 
 
-def prepare_path_to_save_data(filepath_: str, s3_path_: str) -> str:
+def prepare_path_to_save_data(filepath: str, s3_path: str) -> str:
     print(f'Подготовка пути для сохранения файла')
-    filepath_ = filepath_.rsplit('/', 1)[1].replace('.txt', '.parquet')
-    filepath_ = 's3a://' + s3_path_ + filepath_
-    print(f'Путь для сохранения файла: {filepath_}')
-    return filepath_
+    filepath = filepath.rsplit('/', 1)[1].replace('.txt', '.parquet')
+    filepath = 's3a://' + s3_path + filepath
+    print(f'Путь для сохранения файла: {filepath}')
+    return filepath
 
 
-def save_data(data_, filepath_) -> None:
-    print(f'Сохранение данных в файл "{filepath_}"...')
-    if not filepath_.endswith('.parquet'):
-        filepath_ = filepath_ + f'.parquet'
-    if not filepath_.startswith('s3a://'):
-        filepath_ = 's3a://' + filepath_
-    print(f'Полный путь: "{filepath_}"...')
-    data_.coalesce(1).write.parquet(filepath_, mode='overwrite')
+def save_data(data, filepath) -> None:
+    print(f'Сохранение данных в файл "{filepath}"...')
+    if not filepath.endswith('.parquet'):
+        filepath = filepath + f'.parquet'
+    if not filepath.startswith('s3a://'):
+        filepath = 's3a://' + filepath
+    print(f'Полный путь: "{filepath}"...')
+    data.coalesce(1).write.parquet(filepath, mode='overwrite')
     print('Файл успешно сохранен!')
+
+
+def main(data_filepath, spark_cluster_url):
+    # Подготовка путей к файлам.
+    data_filepath = prepare_initial_data_filepath(data_filepath, spark_cluster_url)
+    path_to_save = prepare_path_to_save_data(data_filepath, S3_FRAUD_DATA_PATH)
+    is_cleaned_file_exists = check_cleaned_file_existence(path_to_save)
+    if is_cleaned_file_exists:
+        exit(0)
+
+    # Загрузка данных.
+    spark = create_spark_session()
+    data = load_transaction_data(spark, data_filepath, DATA_SCHEMA)
+
+    # Чистка данных.
+    data = clean_data(data)
+
+    # Сохранение данных.
+    save_data(data, path_to_save)
 
 
 if __name__ == '__main__':
@@ -182,23 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('data_filepath')
     parser.add_argument('spark_cluster_url')
     arguments = parser.parse_args()
-    data_filepath = arguments.data_filepath
-    spark_cluster_url = arguments.spark_cluster_url
+    data_filepath_ = arguments.data_filepath
+    spark_cluster_url_ = arguments.spark_cluster_url
 
-    # Подготовка путей к файлам.
-    data_filepath = prepare_initial_data_filepath(data_filepath, spark_cluster_url)
-    path_to_save = prepare_path_to_save_data(data_filepath, S3_FRAUD_DATA_PATH)
-    is_cleaned_file_exists = check_cleaned_file_existence(path_to_save)
-    if is_cleaned_file_exists:
-        exit(0)
-
-    # Загрузка данных.
-    spark = create_spark_session()
-    data = load_transaction_data(data_filepath, DATA_SCHEMA)
-
-    # Чистка данных.
-    data = clean_data(data)
-
-    # Сохранение данных.
-    s3_client = get_s3_client(S3_URL, BUCKET_RAW_DATA_ACCESS_ID, BUCKET_RAW_DATA_ACCESS_KEY, S3_REGION)
-    save_data(data, path_to_save)
+    main(data_filepath_, spark_cluster_url_)
